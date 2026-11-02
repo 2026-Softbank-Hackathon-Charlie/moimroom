@@ -19,6 +19,9 @@
   background: var(--bg);
   line-height: 1.55;
   -webkit-font-smoothing: antialiased;
+  /* Break Korean text between words, not inside them. */
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 
 *,

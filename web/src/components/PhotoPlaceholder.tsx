@@ -16,7 +16,12 @@ export default function PhotoPlaceholder({ category, label }: Props) {
   const [from, to] = PALETTE[category]
   const gid = `ph-${category}`
   return (
-    <svg className="photo-placeholder" viewBox="0 0 320 200" role="img" aria-label={`${label} 사진 준비 중`}>
+    <svg
+      className="photo-placeholder"
+      viewBox="0 0 320 200"
+      preserveAspectRatio="xMidYMid slice"
+      role="img"
+      aria-label={`${label} 사진 준비 중`}>
       <defs>
         <linearGradient id={gid} x1="0" y1="0" x2="1" y2="1">
           <stop offset="0" stopColor={from} />
