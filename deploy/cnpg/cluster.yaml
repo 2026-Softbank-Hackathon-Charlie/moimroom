@@ -1,0 +1,22 @@
+# Example CloudNativePG cluster for the moimroom chart.
+# CloudNativePG creates the Secret "moimroom-db-app" (key "uri"), which is the
+# chart's default database Secret for a release named "moimroom".
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: moimroom-db
+spec:
+  instances: 2
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.11
+  bootstrap:
+    initdb:
+      database: app
+      owner: app
+  storage:
+    size: 5Gi
+  resources:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
