@@ -82,7 +82,7 @@ func setup(t *testing.T) *env {
 	if _, err := pool.Exec(ctx, "DROP SCHEMA IF EXISTS app CASCADE"); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Migrate(ctx, pool, true); err != nil {
+	if _, err := store.Migrate(ctx, pool, true); err != nil {
 		t.Fatal(err)
 	}
 	fb := &fakeBlobs{objects: map[string][]byte{}, types: map[string]string{}}
