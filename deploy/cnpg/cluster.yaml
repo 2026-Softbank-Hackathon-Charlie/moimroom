@@ -8,6 +8,10 @@ metadata:
 spec:
   instances: 2
   imageName: ghcr.io/cloudnative-pg/postgresql:17.11
+  # The app keeps pooled connections open, so a smart shutdown (a switchover,
+  # or the restart CloudNativePG does after a promotion) would wait the default
+  # 180 seconds for them before falling back to a fast shutdown.
+  smartShutdownTimeout: 5
   bootstrap:
     initdb:
       database: app
