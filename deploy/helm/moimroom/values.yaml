@@ -1,0 +1,60 @@
+replicaCount: 2
+
+image:
+  repository: ghcr.io/2026-softbank-hackathon-charlie/moimroom
+  # Defaults to the chart appVersion.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+
+# Sent as the X-Region response header when set. Never shown in the UI.
+siteRegionLabel: ""
+
+# Insert the starter spaces when app.spaces is empty. Turn off for a
+# database that gets its rows from a restore or replication.
+seedSpaces: true
+
+database:
+  # Existing Secret with the PostgreSQL URI. Empty means "<release>-db-app",
+  # which CloudNativePG creates for a Cluster named "<release>-db".
+  secretName: ""
+  secretKey: uri
+
+s3:
+  # Required. e.g. https://s3.ap-northeast-2.amazonaws.com or
+  # https://storage.googleapis.com
+  endpoint: ""
+  region: ""
+  # Required.
+  bucket: ""
+  # "true" for MinIO, "false" for virtual-host style, empty for auto.
+  pathStyle: ""
+  # Existing Secret with the access key pair. Empty means "<release>-s3".
+  secretName: ""
+  accessKeyKey: accessKey
+  secretKeyKey: secretKey
+
+# Optional Secret with the host code and the operations token. Empty name
+# means "<release>-app". A missing Secret or key turns that feature off.
+appSecret:
+  name: ""
+  hostCodeKey: hostCode
+  adminTokenKey: adminToken
+
+service:
+  type: ClusterIP
+  port: 80
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 64Mi
+  limits:
+    cpu: "1"
+    memory: 256Mi
+
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}

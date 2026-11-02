@@ -1,0 +1,22 @@
+# Go
+/bin/
+*.exe
+*.test
+*.out
+coverage.*
+
+# Frontend
+web/node_modules/
+web/coverage/
+*.tsbuildinfo
+
+# Built SPA is embedded at build time; keep only the placeholder
+internal/spa/dist/*
+!internal/spa/dist/.gitkeep
+
+# Local env and editors
+.env
+.env.*
+.idea/
+.vscode/
+.DS_Store

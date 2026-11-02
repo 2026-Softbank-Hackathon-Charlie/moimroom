@@ -1,0 +1,70 @@
+# Local development stack. Every credential here is a local-only default.
+name: moimroom
+
+services:
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      POSTGRES_DB: app
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - db-data:/var/lib/postgresql/data
+
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: moimroom
+      MINIO_ROOT_PASSWORD: moimroom-local
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9000/minio/health/live"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: pgsty/mc:RELEASE.2026-10-26T00-00-00Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - mc alias set local http://minio:9000 moimroom moimroom-local && mc mb --ignore-existing local/moimroom-photos
+
+  app:
+    build: .
+    image: moimroom:local
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://app:app@db:5432/app?sslmode=disable
+      S3_ENDPOINT: http://minio:9000
+      S3_REGION: us-east-1
+      S3_BUCKET: moimroom-photos
+      S3_ACCESS_KEY: moimroom
+      S3_SECRET_KEY: moimroom-local
+      S3_PATH_STYLE: "true"
+      HOST_CODE: ${HOST_CODE:-local-host-code}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-local-admin-token}
+    # Room for the 5 s drain delay plus in-flight requests (see httpx.Serve).
+    stop_grace_period: 30s
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
+  minio-data:

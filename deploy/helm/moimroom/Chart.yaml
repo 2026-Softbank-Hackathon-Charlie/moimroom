@@ -1,0 +1,6 @@
+apiVersion: v2
+name: moimroom
+description: Hourly booking site for small spaces (study rooms, meeting rooms, party rooms)
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
