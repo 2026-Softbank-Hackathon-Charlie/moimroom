@@ -31,7 +31,21 @@ var (
 )
 
 // Migrate creates the schema and, when seed is true, the first-start spaces.
-func Migrate(ctx context.Context, pool *pgxpool.Pool, seed bool) error {
+// On a standby (a replica that a migration will promote later) it does
+// nothing: the schema arrives through replication, and a read-only server
+// rejects even CREATE ... IF NOT EXISTS. It reports whether it ran.
+func Migrate(ctx context.Context, pool *pgxpool.Pool, seed bool) (bool, error) {
+	var standby bool
+	if err := pool.QueryRow(ctx, "SELECT pg_is_in_recovery()").Scan(&standby); err != nil {
+		return false, err
+	}
+	if standby {
+		return false, nil
+	}
+	return true, migrate(ctx, pool, seed)
+}
+
+func migrate(ctx context.Context, pool *pgxpool.Pool, seed bool) error {
 	stmts := []string{schemaSQL}
 	if seed {
 		stmts = append(stmts, seedSQL)

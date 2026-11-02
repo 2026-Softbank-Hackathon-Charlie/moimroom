@@ -42,8 +42,12 @@ func run(cfg config.Config, log *slog.Logger) error {
 		return err
 	}
 	defer pool.Close()
-	if err := store.Migrate(ctx, pool, cfg.SeedSpaces); err != nil {
+	ran, err := store.Migrate(ctx, pool, cfg.SeedSpaces)
+	if err != nil {
 		return err
+	}
+	if !ran {
+		log.Info("database is a standby; schema migration skipped (it replicates from the primary)")
 	}
 	st := store.New(pool)
 
