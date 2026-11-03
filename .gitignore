@@ -17,6 +17,7 @@ internal/spa/dist/*
 # Local env and editors
 .env
 .env.*
+gha-creds-*.json
 .idea/
 .vscode/
 .DS_Store

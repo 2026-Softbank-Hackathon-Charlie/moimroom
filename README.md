@@ -136,6 +136,22 @@ docker build -t ghcr.io/2026-softbank-hackathon-charlie/moimroom:0.1.0 .
 
 멀티 스테이지 빌드로 SPA와 정적 Go 바이너리를 만들고, distroless 이미지에서 uid 65532로 실행합니다.
 
+### 이미지 자동 게시
+
+GitHub Actions의 `Build and publish image`는 프론트엔드·Go 테스트를 통과한 뒤 `main` push 또는 `main`을 선택한 수동 실행에서 이미지를 한 번 빌드해 AWS ECR(서울)과 GCP Artifact Registry에 함께 게시합니다. PR과 다른 브랜치의 수동 실행은 클라우드 인증 없이 테스트와 Docker 빌드만 확인합니다.
+
+저장소의 **Settings → Secrets and variables → Actions → Variables**에 다음 값을 설정합니다. AWS OIDC 역할과 GCP Workload Identity Federation은 이 저장소의 `main`만 허용하도록 준비해야 합니다. 장기 접근 키는 사용하지 않습니다.
+
+| 변수 | 값 |
+| --- | --- |
+| `AWS_IMAGE_PUBLISH_ROLE_ARN` | ECR 게시용 IAM 역할 ARN |
+| `AWS_ECR_REPOSITORY` | ECR 저장소 이름(레지스트리 주소 제외) |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER` | Workload Identity Provider 전체 리소스 이름 |
+| `GCP_IMAGE_PUBLISH_SERVICE_ACCOUNT` | 이미지 게시용 서비스 계정 이메일 |
+| `GCP_IMAGE_REPOSITORY` | `asia-northeast3-docker.pkg.dev/PROJECT/REPOSITORY/moimroom` 형태의 전체 이미지 주소 |
+
+두 저장소에 같은 `git-<전체 SHA>-run-<실행 ID>-<시도 번호>` 태그를 사용하며, 재실행도 새 태그를 만듭니다. 게시 후 실행 요약에 digest와 양쪽 `이미지주소@sha256:...`를 남깁니다. 앱 자동 배포는 별도 단계입니다.
+
 ### platform.yaml
 
 저장소 루트의 `platform.yaml`은 이 서비스를 빌드하고 띄우는 방법을 적은 배포 명세입니다. 루트의 `Dockerfile`로 이미지를 만들고, 8080 포트에서 받으며, `/healthz`로 헬스 체크를 합니다. PostgreSQL 데이터베이스(`db`)와 S3 버킷(`photos`)이 필요하고, 이 명세로 배포하는 환경이 `PORT`, `DATABASE_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_PATH_STYLE`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`를 넣어 줍니다. `HOST_CODE`와 `ADMIN_TOKEN`은 비밀값이라 명세에 넣지 않으므로, 이렇게 배포하면 호스트 API와 운영 API는 꺼져 있습니다.

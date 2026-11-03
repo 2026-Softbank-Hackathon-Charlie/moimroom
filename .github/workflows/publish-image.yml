@@ -1,0 +1,142 @@
+name: Build and publish image
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Test and validate image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24.22.2
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: web
+        run: npm ci --no-audit --no-fund
+      - name: Test frontend
+        working-directory: web
+        run: npm test
+      - name: Build embedded frontend
+        working-directory: web
+        run: npm run build
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: 1.26.10
+      - name: Test Go
+        run: go test ./...
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+      - name: Validate Docker image without publishing
+        if: github.event_name == 'pull_request' || github.ref != 'refs/heads/main'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: false
+
+  publish:
+    name: Publish to ECR and Artifact Registry
+    needs: verify
+    if: github.repository == '2026-Softbank-Hackathon-Charlie/moimroom' && github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AWS_IMAGE_PUBLISH_ROLE_ARN: ${{ vars.AWS_IMAGE_PUBLISH_ROLE_ARN }}
+      AWS_ECR_REPOSITORY: ${{ vars.AWS_ECR_REPOSITORY }}
+      GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+      GCP_IMAGE_PUBLISH_SERVICE_ACCOUNT: ${{ vars.GCP_IMAGE_PUBLISH_SERVICE_ACCOUNT }}
+      GCP_IMAGE_REPOSITORY: ${{ vars.GCP_IMAGE_REPOSITORY }}
+    steps:
+      - name: Check repository variables
+        shell: bash
+        run: |
+          for variable in AWS_IMAGE_PUBLISH_ROLE_ARN AWS_ECR_REPOSITORY GCP_WORKLOAD_IDENTITY_PROVIDER GCP_IMAGE_PUBLISH_SERVICE_ACCOUNT GCP_IMAGE_REPOSITORY; do
+            if [[ -z "${!variable}" ]]; then
+              echo "::error::Set repository variable ${variable} before publishing."
+              exit 1
+            fi
+          done
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Authenticate to AWS with OIDC
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ env.AWS_IMAGE_PUBLISH_ROLE_ARN }}
+          aws-region: ap-northeast-2
+          role-session-name: moimroom-${{ github.run_id }}-${{ github.run_attempt }}
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@03f1aad4c6c7ffd436567f42f9384779290529bd # v2.1.7
+      - name: Authenticate to Google Cloud with OIDC
+        id: google
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_IMAGE_PUBLISH_SERVICE_ACCOUNT }}
+          token_format: access_token
+          create_credentials_file: false
+          export_environment_variables: false
+      - name: Set image names and unique tag
+        id: images
+        env:
+          ECR_REGISTRY: ${{ steps.ecr.outputs.registry }}
+        shell: bash
+        run: |
+          {
+            echo "aws=${ECR_REGISTRY}/${AWS_ECR_REPOSITORY}"
+            echo "gcp=${GCP_IMAGE_REPOSITORY}"
+            echo "gcp_registry=${GCP_IMAGE_REPOSITORY%%/*}"
+            echo "tag=git-${GITHUB_SHA}-run-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          } >> "$GITHUB_OUTPUT"
+      - name: Log in to Artifact Registry
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ${{ steps.images.outputs.gcp_registry }}
+          username: oauth2accesstoken
+          password: ${{ steps.google.outputs.access_token }}
+      - name: Build once and push to both registries
+        id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ${{ steps.images.outputs.aws }}:${{ steps.images.outputs.tag }}
+            ${{ steps.images.outputs.gcp }}:${{ steps.images.outputs.tag }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+      - name: Record immutable image references
+        env:
+          AWS_IMAGE: ${{ steps.images.outputs.aws }}
+          GCP_IMAGE: ${{ steps.images.outputs.gcp }}
+          IMAGE_TAG: ${{ steps.images.outputs.tag }}
+          IMAGE_DIGEST: ${{ steps.build.outputs.digest }}
+        shell: bash
+        run: |
+          {
+            printf '## Published image\n\nTag: `%s`\n\n' "$IMAGE_TAG"
+            printf 'Digest: `%s`\n\n' "$IMAGE_DIGEST"
+            printf '| Registry | Immutable image |\n| --- | --- |\n'
+            printf '| AWS ECR | `%s@%s` |\n' "$AWS_IMAGE" "$IMAGE_DIGEST"
+            printf '| GCP Artifact Registry | `%s@%s` |\n' "$GCP_IMAGE" "$IMAGE_DIGEST"
+          } >> "$GITHUB_STEP_SUMMARY"
