@@ -40,6 +40,7 @@ deploy/helm/         Helm 차트
 deploy/cnpg/         CloudNativePG 클러스터 예시
 ops/                 부하 테스트와 장애 주입 스크립트
 docs/operations.md   운영 가이드
+platform.yaml        배포 명세 (서비스, 포트, 헬스 체크, 데이터베이스와 버킷)
 ```
 
 ## 로컬에서 실행
@@ -134,6 +135,10 @@ docker build -t ghcr.io/2026-softbank-hackathon-charlie/moimroom:0.1.0 .
 ```
 
 멀티 스테이지 빌드로 SPA와 정적 Go 바이너리를 만들고, distroless 이미지에서 uid 65532로 실행합니다.
+
+### platform.yaml
+
+저장소 루트의 `platform.yaml`은 이 서비스를 빌드하고 띄우는 방법을 적은 배포 명세입니다. 루트의 `Dockerfile`로 이미지를 만들고, 8080 포트에서 받으며, `/healthz`로 헬스 체크를 합니다. PostgreSQL 데이터베이스(`db`)와 S3 버킷(`photos`)이 필요하고, 이 명세로 배포하는 환경이 `PORT`, `DATABASE_URL`, `S3_ENDPOINT`, `S3_BUCKET`, `S3_REGION`, `S3_PATH_STYLE`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`를 넣어 줍니다. `HOST_CODE`와 `ADMIN_TOKEN`은 비밀값이라 명세에 넣지 않으므로, 이렇게 배포하면 호스트 API와 운영 API는 꺼져 있습니다.
 
 ### Helm
 

@@ -1,0 +1,11 @@
+name: moimroom
+services:
+  - name: web
+    port: 8080
+    healthCheck: /healthz
+    public: true
+resources:
+  - name: db
+    type: postgres
+  - name: photos
+    type: s3
