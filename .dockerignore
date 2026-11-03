@@ -1,4 +1,5 @@
 .git
+gha-creds-*.json
 web/node_modules
 web/coverage
 internal/spa/dist
