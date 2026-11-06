@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/api"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/blob"
@@ -19,6 +20,7 @@ import (
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/pgdb"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/spa"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/store"
+	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/telemetry"
 )
 
 func main() {
@@ -36,6 +38,17 @@ func main() {
 func run(cfg config.Config, log *slog.Logger) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	tracing, err := telemetry.New(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		shutdown, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+		defer cancel()
+		if tracing.Shutdown(shutdown) != nil {
+			log.Warn("telemetry shutdown incomplete")
+		}
+	}()
 
 	pool, err := pgdb.Open(ctx, cfg.DatabaseURL, log)
 	if err != nil {
@@ -83,5 +96,5 @@ func run(cfg config.Config, log *slog.Logger) error {
 	mux.Handle("/", spa.Handler(spa.Dist()))
 
 	handler := httpx.Middleware(log, cfg.Instance, cfg.RegionLabel)(inj.Middleware(mux))
-	return httpx.Serve(ctx, log, httpx.NewServer(":"+cfg.Port, handler), probes)
+	return httpx.Serve(ctx, log, httpx.NewServer(":"+cfg.Port, tracing.Middleware(handler)), probes)
 }

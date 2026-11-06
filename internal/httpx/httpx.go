@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -75,6 +77,9 @@ func Middleware(log *slog.Logger, servedBy, region string) func(http.Handler) ht
 				id = newID()
 			}
 			reqLog := log.With("request_id", id)
+			if span := trace.SpanContextFromContext(r.Context()); span.IsValid() {
+				reqLog = reqLog.With("trace_id", span.TraceID().String(), "span_id", span.SpanID().String())
+			}
 			ctx := context.WithValue(r.Context(), keyRequestID, id)
 			ctx = context.WithValue(ctx, keyLogger, reqLog)
 			ctx, cancel := context.WithTimeout(ctx, RequestTimeout)
