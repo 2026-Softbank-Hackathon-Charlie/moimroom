@@ -45,6 +45,15 @@ CREATE TABLE IF NOT EXISTS app.reservations (
 );
 CREATE INDEX IF NOT EXISTS reservations_space_date_idx ON app.reservations (space_id, date);
 
+-- The response and booking commit together; this ledger follows physical WAL
+-- replication and must be retained throughout the supported retry window.
+CREATE TABLE IF NOT EXISTS app.reservation_retries (
+    key_hash text PRIMARY KEY,
+    request_hash text NOT NULL,
+    response jsonb,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+
 -- One row per booked hour. The primary key is what rejects double booking.
 CREATE TABLE IF NOT EXISTS app.reservation_slots (
     space_id       bigint NOT NULL,

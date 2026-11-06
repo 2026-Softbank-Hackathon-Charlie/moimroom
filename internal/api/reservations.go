@@ -1,7 +1,10 @@
 package api
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -38,6 +41,47 @@ func (s *Server) createReservation(w http.ResponseWriter, r *http.Request) {
 		badRequest(w, "휴대폰 번호를 정확히 입력해 주세요.")
 		return
 	}
+	var retry *store.ReservationRetry
+	if key := r.Header.Get("Idempotency-Key"); key != "" {
+		validKey := len(r.Header.Values("Idempotency-Key")) == 1 && len(key) >= 16 && len(key) <= 128
+		for _, char := range key {
+			if char < 33 || char > 126 {
+				validKey = false
+			}
+		}
+		if !validKey {
+			badRequest(w, "Idempotency-Key must be 16 to 128 characters without whitespace")
+			return
+		}
+		req.Phone = phone
+		canonical, err := json.Marshal(req)
+		if err != nil {
+			fail(w, r, err, "")
+			return
+		}
+		keySum := sha256.Sum256([]byte("POST /api/reservations\x00" + key))
+		keyHash := hex.EncodeToString(keySum[:])
+		matches := func(hash string) bool { return matchesPrivateHash(string(canonical), hash) }
+		previous, found, err := s.store.LookupReservationRetry(r.Context(), keyHash, matches)
+		if errors.Is(err, store.ErrRetryConflict) {
+			httpx.Error(w, http.StatusConflict, "idempotency_key_reused")
+			return
+		}
+		if err != nil {
+			fail(w, r, err, "")
+			return
+		}
+		if found {
+			httpx.JSON(w, http.StatusCreated, previous)
+			return
+		}
+		requestHash, err := hashPhone(string(canonical))
+		if err != nil {
+			fail(w, r, err, "")
+			return
+		}
+		retry = &store.ReservationRetry{KeyHash: keyHash, RequestHash: requestHash, Matches: matches}
+	}
 	d, ok := s.parseDate(req.Date)
 	if !ok {
 		badRequest(w, "예약할 수 없는 날짜입니다.")
@@ -68,7 +112,7 @@ func (s *Server) createReservation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.store.CreateReservation(r.Context(), store.Reservation{
+	res, err := s.store.CreateReservationRetry(r.Context(), store.Reservation{
 		SpaceID:    sp.ID,
 		Date:       req.Date,
 		StartHour:  req.StartHour,
@@ -78,7 +122,11 @@ func (s *Server) createReservation(w http.ResponseWriter, r *http.Request) {
 		GuestName:  req.GuestName,
 		PhoneLast4: phone[len(phone)-4:],
 		PhoneHash:  hash,
-	})
+	}, retry)
+	if errors.Is(err, store.ErrRetryConflict) {
+		httpx.Error(w, http.StatusConflict, "idempotency_key_reused")
+		return
+	}
 	if errors.Is(err, store.ErrSlotTaken) {
 		httpx.Error(w, http.StatusConflict, "선택하신 시간에 이미 예약이 있습니다. 다른 시간을 선택해 주세요.")
 		return
