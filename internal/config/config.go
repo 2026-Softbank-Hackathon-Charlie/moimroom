@@ -18,6 +18,8 @@ type Config struct {
 	AdminToken  string
 	RegionLabel string
 	Instance    string
+	AIEndpoint  string
+	AIToken     string
 	// SeedSpaces controls the first-start catalog. Turn it off for a database
 	// that will receive its rows from elsewhere (restore, replication).
 	SeedSpaces bool
@@ -40,6 +42,8 @@ func Load() (Config, error) {
 		DatabaseURL: os.Getenv("DATABASE_URL"),
 		HostCode:    os.Getenv("HOST_CODE"),
 		AdminToken:  os.Getenv("ADMIN_TOKEN"),
+		AIEndpoint:  os.Getenv("AI_ENDPOINT"),
+		AIToken:     os.Getenv("AI_TOKEN"),
 		RegionLabel: os.Getenv("SITE_REGION_LABEL"),
 		SeedSpaces:  true,
 	}

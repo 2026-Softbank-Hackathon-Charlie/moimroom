@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router'
 import { getAvailability, getReviews, getSpace, photoUrl, type Space } from '../api'
+import AIUsageGuide from '../components/AIUsageGuide'
 import { ErrorState, Loading } from '../components/Layout'
 import PhotoPlaceholder from '../components/PhotoPlaceholder'
 import { Stars } from '../components/StarRating'
@@ -179,6 +180,7 @@ export default function SpaceDetailPage() {
             </ul>
           </section>
         )}
+        <AIUsageGuide key={s.id} spaceId={s.id} />
         <Reviews space={s} />
       </div>
 
