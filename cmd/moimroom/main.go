@@ -20,6 +20,7 @@ import (
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/pgdb"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/spa"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/store"
+	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/writtenrecords"
 )
 
 func main() {
@@ -51,6 +52,11 @@ func run(cfg config.Config, log *slog.Logger) error {
 		log.Info("database is a standby; schema migration skipped (it replicates from the primary)")
 	}
 	st := store.New(pool)
+	if cfg.WrittenRecords.Enabled() {
+		st.ConfigureWrittenRecords(cfg.WrittenRecords.Stream)
+		reporter := &writtenrecords.Reporter{Config: cfg.WrittenRecords, Source: st}
+		go reporter.Run(ctx, log)
+	}
 
 	photos, err := blob.NewS3(cfg.S3)
 	if err != nil {
