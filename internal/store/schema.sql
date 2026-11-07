@@ -1,6 +1,24 @@
 -- Idempotent schema. Every table has a primary key.
 CREATE SCHEMA IF NOT EXISTS app;
 
+-- Receipt identity follows WAL/restore. A fresh database gets a new identity.
+CREATE TABLE IF NOT EXISTS app.write_collection_identity (
+    id boolean PRIMARY KEY DEFAULT true CHECK(id),
+    generation uuid NOT NULL DEFAULT gen_random_uuid()
+);
+INSERT INTO app.write_collection_identity(id) VALUES(true) ON CONFLICT DO NOTHING;
+
+-- Append-only: the delivery worker performs no DB writes outside gateway fencing.
+CREATE TABLE IF NOT EXISTS app.written_record_outbox (
+    seq bigserial PRIMARY KEY,
+    stream text NOT NULL,
+    event_id text NOT NULL,
+    pk text NOT NULL,
+    recorded_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+    UNIQUE(stream,event_id)
+);
+CREATE INDEX IF NOT EXISTS written_record_outbox_stream_seq_idx ON app.written_record_outbox(stream,seq);
+
 CREATE TABLE IF NOT EXISTS app.spaces (
     id             bigserial PRIMARY KEY,
     name           text        NOT NULL,
