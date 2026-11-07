@@ -14,6 +14,7 @@ import (
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/api"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/blob"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/config"
+	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/credentialcheck"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/fault"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/httpx"
 	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/pgdb"
@@ -73,6 +74,16 @@ func run(cfg config.Config, log *slog.Logger) error {
 
 	mux := http.NewServeMux()
 	probes.Register(mux)
+	// This read-only check uses fresh DB authentication and the application's
+	// configured signed bucket client. It reports no credentials/provider errors.
+	mux.Handle("GET /internal/secret-usage", credentialcheck.Handler(func(ctx context.Context, challenge string) error {
+		return pgdb.CheckRuntime(ctx, cfg.DatabaseURL, challenge)
+	}, func(ctx context.Context, _ string) error {
+		if cfg.S3.AccessKey == "" || cfg.S3.SecretKey == "" {
+			return credentialcheck.ErrNotConfigured
+		}
+		return photos.CheckBucket(ctx)
+	}))
 	inj.Register(mux, cfg.AdminToken)
 	notFound := func(w http.ResponseWriter, _ *http.Request) {
 		httpx.Error(w, http.StatusNotFound, "요청한 주소를 찾을 수 없습니다.")
