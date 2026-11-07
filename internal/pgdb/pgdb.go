@@ -8,8 +8,27 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
+
+// CheckRuntime authenticates a fresh connection instead of trusting a pooled
+// session established before a credential rotation. The query changes no data.
+func CheckRuntime(ctx context.Context, url, challenge string) error {
+	c, err := pgx.Connect(ctx, url)
+	if err != nil {
+		return err
+	}
+	defer c.Close(ctx)
+	var got string
+	if err := c.QueryRow(ctx, "SELECT $1::text", challenge).Scan(&got); err != nil {
+		return err
+	}
+	if got != challenge {
+		return fmt.Errorf("database challenge mismatch")
+	}
+	return nil
+}
 
 // Open connects and waits up to a minute for the database, so a pod that
 // starts before its database does not crash-loop.
