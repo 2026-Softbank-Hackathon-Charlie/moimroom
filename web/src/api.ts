@@ -71,10 +71,12 @@ export interface Photo {
 
 export class ApiError extends Error {
   readonly status: number
-  constructor(status: number, message: string) {
+  readonly requestId?: string
+  constructor(status: number, message: string, requestId?: string) {
     super(message)
     this.name = 'ApiError'
     this.status = status
+    this.requestId = requestId
   }
 }
 
@@ -84,6 +86,7 @@ interface RequestOptions {
   method?: string
   body?: unknown
   hostCode?: string
+  signal?: AbortSignal
 }
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
@@ -99,7 +102,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
 
   let res: Response
   try {
-    res = await fetch(`/api${path}`, { method: opts.method ?? 'GET', headers, body })
+    res = await fetch(`/api${path}`, { method: opts.method ?? 'GET', headers, body, signal: opts.signal })
   } catch {
     throw new ApiError(0, '네트워크 연결을 확인해 주세요.')
   }
@@ -108,7 +111,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     // Server errors get one friendly message; client errors carry the
     // server's explanation, which is written for users.
     const message = res.status < 500 && data?.error ? data.error : GENERIC_ERROR
-    throw new ApiError(res.status, message)
+    throw new ApiError(res.status, message, res.headers.get('X-Request-Id') ?? undefined)
   }
   return data as T
 }
@@ -137,6 +140,16 @@ export async function listSpaces(q: SpaceQuery = {}): Promise<Space[]> {
 }
 
 export const getSpace = (id: number) => request<Space>(`/spaces/${id}`)
+
+export interface AIBrief {
+  text: string
+  requestId: string
+  backend: 'gcp' | 'laptop'
+  durationMs: number
+}
+
+export const generateSpaceBrief = (id: number, signal?: AbortSignal) =>
+  request<AIBrief>(`/spaces/${id}/ai-brief`, { method: 'POST', signal })
 
 export const getAvailability = (id: number, date: string) =>
   request<Availability>(`/spaces/${id}/availability${query({ date })}`)

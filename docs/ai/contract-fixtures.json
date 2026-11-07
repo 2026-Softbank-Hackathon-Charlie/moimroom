@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "successGcp": {
+    "text": "요약: 조용한 모임 공간입니다.\n시설: 화이트보드가 있습니다.\n주의: 실내에서는 조용히 이용해 주세요.\n[SPACE-1]",
+    "requestId": "ai-demo-001",
+    "backend": "gcp",
+    "durationMs": 2500
+  },
+  "successLaptop": {
+    "text": "요약: 조용한 모임 공간입니다.\n시설: 화이트보드가 있습니다.\n주의: 실내에서는 조용히 이용해 주세요.\n[SPACE-1]",
+    "requestId": "ai-demo-002",
+    "backend": "laptop",
+    "durationMs": 5250
+  },
+  "error502": {
+    "error": "AI 안내를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요."
+  },
+  "error504": {
+    "error": "AI 안내 시간이 초과되었습니다. 다시 시도해 주세요."
+  },
+  "publicCases": {
+    "normal": {
+      "id": 1,
+      "description": "조용한 모임 공간입니다.",
+      "amenities": [
+        "화이트보드"
+      ],
+      "rules": [
+        "실내에서는 조용히 이용해 주세요."
+      ]
+    },
+    "unknown": {
+      "id": 2,
+      "description": "모임 공간입니다.",
+      "amenities": [],
+      "rules": []
+    },
+    "empty": {
+      "id": 3,
+      "description": "",
+      "amenities": [],
+      "rules": []
+    },
+    "rulesOnly": {
+      "id": 4,
+      "description": "",
+      "amenities": [],
+      "rules": [
+        "실내 금연입니다."
+      ]
+    }
+  },
+  "stalePath": "/api/spaces/9223372036854775807/ai-brief"
+}
