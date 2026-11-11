@@ -129,3 +129,12 @@ curl -X DELETE https://moimroom.example.com/admin/fault -H "Authorization: Beare
 - 사진 객체는 키가 매번 새로 만들어지고 덮어쓰지 않습니다. DB에는 키만 저장합니다.
 - 논리 복제는 시퀀스 값을 옮기지 않습니다. 복제한 데이터베이스로 쓰기를 옮길 때는 각 `id` 시퀀스를 `setval`로 최댓값 이상으로 맞춥니다.
 - 다른 곳에서 데이터를 받을 빈 데이터베이스에는 `SEED_SPACES=false`(차트 `seedSpaces: false`)로 시작해 초기 공간이 기본 키와 겹치지 않게 합니다.
+
+
+## OpenTelemetry HTTP 계측
+
+`OTEL_EXPORTER_OTLP_ENDPOINT`가 없거나 `OTEL_TRACES_EXPORTER=none`이면 기존 동작을 유지합니다. 공통 플랫폼 profile이 HTTPS endpoint, OTLP http/protobuf, 공개 CA 파일(`OTEL_EXPORTER_OTLP_CERTIFICATE`), `OTEL_SERVICE_NAME`, `OTEL_RESOURCE_ATTRIBUTES`를 주입하면 HTTP server span과 W3C traceparent 전파를 활성화합니다. per-signal endpoint/insecure override는 exporter의 명시적 HTTPS 설정을 덮어쓰지 않습니다. OTLP 전송 경로는 `/v1/traces`입니다.
+
+요청 로그의 trace_id/span_id는 해당 server span과 같습니다. `/healthz`, `/readyz`는 span을 만들지 않습니다. span에는 HTTP method와 status만 담으며 URL 경로/query, 인증 헤더, body, SQL은 추가하지 않습니다. DB/client span은 아직 없습니다. SDK 없는 다른 앱의 내부 trace까지 자동 생성하지 않습니다.
+
+batch queue1024, batch1초, export timeout3초, 종료 flush 최대4초입니다. 수집기 장애가 요청 처리를 기다리게 하지 않지만 큐 초과나 종료 제한 시 trace 유실이 가능합니다. SDK TLS 인증은 공개 CA와 hostname 검증을 유지합니다. 실제 플랫폼 gateway 배포와 환경 profile 활성화는 infra PR 및 별도 실행 승인이 필요합니다.
