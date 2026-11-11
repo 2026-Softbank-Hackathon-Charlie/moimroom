@@ -97,6 +97,9 @@ func run(cfg config.Config, log *slog.Logger) error {
 	mux.HandleFunc("/admin", notFound)
 	mux.HandleFunc("/admin/", notFound)
 	api.New(st, photos, cfg.HostCode).Register(mux)
+	if err := api.RegisterAIBrief(mux, st.GetSpace, cfg.AIEndpoint, cfg.AIToken); err != nil {
+		log.Warn("AI guide disabled", "reason", "invalid AI configuration")
+	}
 	mux.Handle("/", spa.Handler(spa.Dist()))
 
 	handler := httpx.Middleware(log, cfg.Instance, cfg.RegionLabel)(inj.Middleware(mux))

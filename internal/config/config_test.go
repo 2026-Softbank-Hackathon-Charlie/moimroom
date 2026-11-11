@@ -41,3 +41,20 @@ func TestLoadRequiresCoreSettings(t *testing.T) {
 		t.Fatalf("unexpected config %+v", c)
 	}
 }
+
+func TestLoadAISettingsAreOptionalAndServerSide(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://x")
+	t.Setenv("S3_ENDPOINT", "http://minio:9000")
+	t.Setenv("S3_BUCKET", "photos")
+	t.Setenv("AI_ENDPOINT", "https://gateway.example/api/chat")
+	t.Setenv("AI_TOKEN", "server-secret")
+	c, err := Load()
+	if err != nil || c.AIEndpoint != "https://gateway.example/api/chat" || c.AIToken != "server-secret" {
+		t.Fatal("AI environment settings not loaded")
+	}
+	t.Setenv("AI_ENDPOINT", "")
+	t.Setenv("AI_TOKEN", "")
+	if _, err := Load(); err != nil {
+		t.Fatal("disabled AI must not prevent app startup", err)
+	}
+}
