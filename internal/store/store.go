@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -55,7 +56,10 @@ func migrate(ctx context.Context, pool *pgxpool.Pool, seed bool) error {
 	return pgdb.Migrate(ctx, pool, migrateLockKey, stmts...)
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool          *pgxpool.Pool
+	writtenStream string
+}
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
@@ -330,6 +334,11 @@ func (st *Store) createReservation(ctx context.Context, r Reservation, retry *Re
 			return r, err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE app.reservation_retries SET response=$2 WHERE key_hash=$1`, retry.KeyHash, response); err != nil {
+			return r, err
+		}
+	}
+	if st.writtenStream != "" {
+		if _, err := tx.Exec(ctx, `INSERT INTO app.written_record_outbox(stream,event_id,pk) VALUES($1,$2,$3) ON CONFLICT(stream,event_id) DO NOTHING`, st.writtenStream, fmt.Sprintf("reservation-%d", out.ID), fmt.Sprint(out.ID)); err != nil {
 			return r, err
 		}
 	}
