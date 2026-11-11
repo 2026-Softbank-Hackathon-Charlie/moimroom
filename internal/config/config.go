@@ -4,6 +4,7 @@ package config
 
 import (
 	"fmt"
+	"github.com/2026-Softbank-Hackathon-Charlie/moimroom/internal/writtenrecords"
 	"net/url"
 	"os"
 	"strconv"
@@ -11,13 +12,14 @@ import (
 )
 
 type Config struct {
-	Port        string
-	DatabaseURL string
-	S3          S3
-	HostCode    string
-	AdminToken  string
-	RegionLabel string
-	Instance    string
+	WrittenRecords writtenrecords.Config
+	Port           string
+	DatabaseURL    string
+	S3             S3
+	HostCode       string
+	AdminToken     string
+	RegionLabel    string
+	Instance       string
 	// SeedSpaces controls the first-start catalog. Turn it off for a database
 	// that will receive its rows from elsewhere (restore, replication).
 	SeedSpaces bool
@@ -36,12 +38,16 @@ type S3 struct {
 
 func Load() (Config, error) {
 	c := Config{
-		Port:        get("PORT", "8080"),
-		DatabaseURL: os.Getenv("DATABASE_URL"),
-		HostCode:    os.Getenv("HOST_CODE"),
-		AdminToken:  os.Getenv("ADMIN_TOKEN"),
-		RegionLabel: os.Getenv("SITE_REGION_LABEL"),
-		SeedSpaces:  true,
+		WrittenRecords: writtenrecords.Config{URL: os.Getenv("WRITTEN_RECORDS_URL"), Stream: os.Getenv("WRITTEN_RECORDS_STREAM"), Token: os.Getenv("WRITTEN_RECORDS_TOKEN")},
+		Port:           get("PORT", "8080"),
+		DatabaseURL:    os.Getenv("DATABASE_URL"),
+		HostCode:       os.Getenv("HOST_CODE"),
+		AdminToken:     os.Getenv("ADMIN_TOKEN"),
+		RegionLabel:    os.Getenv("SITE_REGION_LABEL"),
+		SeedSpaces:     true,
+	}
+	if err := c.WrittenRecords.Validate(); err != nil {
+		return c, err
 	}
 	if v := os.Getenv("SEED_SPACES"); v != "" {
 		b, err := strconv.ParseBool(v)

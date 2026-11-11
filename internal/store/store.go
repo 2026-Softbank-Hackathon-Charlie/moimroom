@@ -5,7 +5,9 @@ import (
 	"context"
 	"crypto/rand"
 	_ "embed"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -27,6 +29,7 @@ const migrateLockKey = 7_316_001
 var (
 	ErrNotFound        = errors.New("not found")
 	ErrSlotTaken       = errors.New("slot already booked")
+	ErrRetryConflict   = errors.New("idempotency key reused with different request")
 	ErrAlreadyReviewed = errors.New("already reviewed")
 )
 
@@ -53,7 +56,10 @@ func migrate(ctx context.Context, pool *pgxpool.Pool, seed bool) error {
 	return pgdb.Migrate(ctx, pool, migrateLockKey, stmts...)
 }
 
-type Store struct{ pool *pgxpool.Pool }
+type Store struct {
+	pool          *pgxpool.Pool
+	writtenStream string
+}
 
 func New(pool *pgxpool.Pool) *Store { return &Store{pool: pool} }
 
@@ -248,9 +254,19 @@ func scanReservation(row pgx.Row) (Reservation, error) {
 // single transaction. A slot primary key violation means someone else holds
 // one of the hours, and nothing is written.
 func (st *Store) CreateReservation(ctx context.Context, r Reservation) (Reservation, error) {
+	return st.CreateReservationRetry(ctx, r, nil)
+}
+
+type ReservationRetry struct {
+	KeyHash     string
+	RequestHash string
+	Matches     func(string) bool
+}
+
+func (st *Store) CreateReservationRetry(ctx context.Context, r Reservation, retry *ReservationRetry) (Reservation, error) {
 	for attempt := 0; ; attempt++ {
 		r.Code = newCode()
-		out, err := st.createReservation(ctx, r)
+		out, err := st.createReservation(ctx, r, retry)
 		if isUnique(err, "reservations_code_key") && attempt < 3 {
 			continue // code collision, astronomically rare
 		}
@@ -258,12 +274,37 @@ func (st *Store) CreateReservation(ctx context.Context, r Reservation) (Reservat
 	}
 }
 
-func (st *Store) createReservation(ctx context.Context, r Reservation) (Reservation, error) {
+func (st *Store) createReservation(ctx context.Context, r Reservation, retry *ReservationRetry) (Reservation, error) {
 	tx, err := st.pool.Begin(ctx)
 	if err != nil {
 		return r, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
+	if retry != nil {
+		if retry.Matches == nil || retry.KeyHash == "" || retry.RequestHash == "" {
+			return r, ErrRetryConflict
+		}
+		_, err = tx.Exec(ctx, `INSERT INTO app.reservation_retries(key_hash,request_hash) VALUES ($1,$2) ON CONFLICT DO NOTHING`, retry.KeyHash, retry.RequestHash)
+		if err != nil {
+			return r, err
+		}
+		var hash string
+		var response []byte
+		err = tx.QueryRow(ctx, `SELECT request_hash,response FROM app.reservation_retries WHERE key_hash=$1 FOR UPDATE`, retry.KeyHash).Scan(&hash, &response)
+		if err != nil {
+			return r, err
+		}
+		if !retry.Matches(hash) {
+			return r, ErrRetryConflict
+		}
+		if response != nil {
+			var out Reservation
+			if err := json.Unmarshal(response, &out); err != nil {
+				return r, err
+			}
+			return out, tx.Commit(ctx)
+		}
+	}
 
 	err = tx.QueryRow(ctx, `INSERT INTO app.reservations
 		(code, space_id, date, start_hour, end_hour, headcount, total_price, guest_name, phone_last4, phone_hash)
@@ -287,7 +328,44 @@ func (st *Store) createReservation(ctx context.Context, r Reservation) (Reservat
 	if err != nil {
 		return r, err
 	}
+	if retry != nil {
+		response, err := json.Marshal(out)
+		if err != nil {
+			return r, err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE app.reservation_retries SET response=$2 WHERE key_hash=$1`, retry.KeyHash, response); err != nil {
+			return r, err
+		}
+	}
+	if st.writtenStream != "" {
+		if _, err := tx.Exec(ctx, `INSERT INTO app.written_record_outbox(stream,event_id,pk) VALUES($1,$2,$3) ON CONFLICT(stream,event_id) DO NOTHING`, st.writtenStream, fmt.Sprintf("reservation-%d", out.ID), fmt.Sprint(out.ID)); err != nil {
+			return r, err
+		}
+	}
 	return out, tx.Commit(ctx)
+}
+
+// LookupReservationRetry returns only committed receipts. An in-flight request
+// may not yet be visible; CreateReservationRetry serializes the eventual retry.
+func (st *Store) LookupReservationRetry(ctx context.Context, keyHash string, matches func(string) bool) (Reservation, bool, error) {
+	var hash string
+	var response []byte
+	err := st.pool.QueryRow(ctx, `SELECT request_hash,response FROM app.reservation_retries WHERE key_hash=$1`, keyHash).Scan(&hash, &response)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Reservation{}, false, nil
+	}
+	if err != nil {
+		return Reservation{}, false, err
+	}
+	if matches == nil || !matches(hash) {
+		return Reservation{}, false, ErrRetryConflict
+	}
+	if response == nil {
+		return Reservation{}, false, errors.New("incomplete retry receipt")
+	}
+	var out Reservation
+	err = json.Unmarshal(response, &out)
+	return out, true, err
 }
 
 func (st *Store) ReservationByCode(ctx context.Context, code string) (Reservation, error) {

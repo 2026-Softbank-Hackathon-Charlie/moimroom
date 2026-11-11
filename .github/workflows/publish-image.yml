@@ -14,6 +14,19 @@ jobs:
     name: Test and validate image
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.11-alpine
+        env:
+          POSTGRES_USER: moimroom
+          POSTGRES_PASSWORD: ci-test-only
+          POSTGRES_DB: moimroom_test
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U moimroom -d moimroom_test"
+          --health-interval 5s --health-timeout 5s --health-retries 12
+    env:
+      MOIMROOM_TEST_DATABASE_URL: postgres://moimroom:ci-test-only@127.0.0.1:5432/moimroom_test?sslmode=disable
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
